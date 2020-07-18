@@ -1,9 +1,14 @@
 ---
-layout: post
-title:  "Test"
+layout: single
+title:  "Comming soon"
 date:   2020-07-18 15:06:19 +0200
 categories: kickoff
+author_profile: true
+read_time: false
+comments: false
+share: false
+related: false
 ---
 
-#First post
-test
+#Hello world
+![helloWorld](/assets/images/hello_world.jpg)
