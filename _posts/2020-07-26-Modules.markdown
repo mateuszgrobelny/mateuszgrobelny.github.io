@@ -1,0 +1,189 @@
+---
+layout: single
+title:  "Modularize your application"
+date:   2020-08-02 16:00:00 +0200
+categories: Java
+author_profile: true
+read_time: true
+comments: false
+share: false
+related: false
+---
+
+Microservice architecture trend is a fact. As in every solution, there is nothing for free, and we are exchanging some set of problems to another. 
+
+Microservices solve the problem of parallel work of multiple teams.  In my workplace, discussions on whether some functionalities should be written as a separate service is common. 
+
+The approach that I advocate for is to create one application, with separate elements that are working together. Focusing on separation makes the potential extraction process much simpler. 
+
+Below I presented a basic overview of techniques that can be used to embrace the idea of so-called "modularized monolith".
+
+### Modularization by package
+
+> _For everyday work, I'm using a feature of IntelliJ IDEA that makes scopes of classes visible. This can be set in project view:_
+![Visibility icons](/assets/images/2020-07-26-Modules/visibility_icons.png "Visibility icons in IntelliJ")
+{: title="Visibility icons"}
+
+**Everything is public** - this approach is sign that hermetization at package level was neglected. This could lead to misuse of internal classes that are not intended to be used outside of the package/module scope.
+
+![Everything is public here](/assets/images/2020-07-26-Modules/everything_public.png "Everything is public here")
+
+*This is an example of how does this level of modularization looks like. It is not that uncommon to see this kind of approach in codebases - especially ones that use layered (lasagna-like) structure.*
+
+### Modularization by package
+
+**Separated packages** - each package has its own facade which is exposed for use in the other modules. Internal implementation classes are hidden inside the with the use of package scope.
+
+_note: If you are not familiar with types of Access levels in Java you can learn about them [here](https://docs.oracle.com/javase/tutorial/java/javaOO/accesscontrol.html)_
+
+Example of code structure I presented below is backed by Spring. 
+
+> Deleting `public` modifiers can be a tedious task. Luckily IntelliJ class template can be configured to create package scope classes by default. Remove the `public` modifier from the class template and voila, from now on added classes won't be public anymore.
+![Change class template](/assets/images/2020-07-26-Modules/settings_class_template.png "Change class template IntelliJ")
+{: title="Change class template IntelliJ"}
+
+For the sake of example I created a simple application that highlights the core concept of modularization by packaging. The purpose of this small spring-based application is the calculation of [BMI _(Body Mass Index)_](https://www.news-medical.net/health/What-is-Body-Mass-Index-(BMI).aspx)  and [BMR _(Basal Metabolic Rate)_](https://www.healthline.com/health/what-is-basal-metabolic-rate). Let's inspect package structure of the BMR module:
+![Bmr module structure](/assets/images/2020-07-26-Modules/bmr_module.png "Bmr module structure")
+
+This module consists of:
+* facade - the entry point of the module
+
+```java
+public interface BmrFacade {
+
+    Bmr calculateBmr(Person person);
+}
+```
+
+* internal classes, that are not visible outside the package
+
+```java
+class FemaleBmrCalculator {
+    Bmr calculateBmr(final Person person) {
+        final double heightInCm = person.getMetersHeight() * 100;
+        return new Bmr(10 * person.getWeight() + 6.25 * heightInCm - 5 * person.getAge() - 161);
+    }
+}
+```
+
+```java
+class MaleBmrCalculator {
+    Bmr calculateBmr(final Person person) {
+        final double heightInCm = person.getMetersHeight() * 100;
+        return new Bmr(10 * person.getWeight() + 6.25 * heightInCm - 5 * person.getAge() + 5);
+    }
+}
+```
+
+* simple data structure used to communicate with other modules
+
+```java
+public class Bmr {
+    final double value;
+
+    public Bmr(double value) {
+        this.value = value;
+    }
+}
+```
+
+* configuration class that makes module accessible from spring context
+
+_note: This is an implementation of creator pattern from GRASP, the whole module is created in this class. IO should be injected as a dependency - to make testing easier. Keeping creation in one place is an extension of **single point entry** concept that is represented by module facade._
+
+```java
+@Configuration
+class BmrModuleConfiguration {
+
+    @Bean
+    BmrFacade bmrFacade() {
+        final MaleBmrCalculator maleBmrCalculator = new MaleBmrCalculator();
+        final FemaleBmrCalculator femaleBmrCalculator = new FemaleBmrCalculator();
+        return new BmrService(maleBmrCalculator, femaleBmrCalculator);
+    }
+
+}
+```
+
+Other packages are created in a similar manner.
+
+This approach helps write maintainable black-box tests.  When codebase is growing and changing this kind of structure helps to reduce the number of moving parts that we need to be aware of. This is achieved by enclosing internal logic/implementation inside modules. 
+
+### Separation at build tool level (gradle example)
+
+Other packages are created in a similar manner.
+
+This approach helps write maintainable black-box tests.  When codebase is growing and changing this kind of structure helps to reduce the number of moving parts that we need to be aware of. This is achieved by enclosing internal logic. If we want to take separation even further the next step is to extract separate modules with the help of a build tool. The presented example is using Gradle as a build tool, but Maven could be used for this as well.
+
+Modules were extracted as Gradle subprojects. The structure of the application looks like this:
+
+![Bmr module structure](/assets/images/2020-07-26-Modules/modules_lvl2_overview.png "Bmr module structure")
+
+The main application class resides in the root module.
+
+There are three modules that are represented by a separate gradle projects. Each module has its own source and test code and is configured by _build.gradle_ file. 
+
+Gradle configuration that allows module cooperation:
+
+a) settings.gradle store defined modules:
+
+```groovy
+rootProject.name = 'modularity-example'
+include 'calculate'
+//(...)
+```
+
+b) build.gradle in root has dependency for another module
+
+```groovy
+dependencies {
+ //(...)
+    implementation project(":calculate")
+}
+```
+
+c) _calculate_ module build.gradle looks like this:
+
+```groovy
+plugins {
+    id 'java-library'
+}
+
+dependencies{
+    compile project(":commons")
+    compile group: 'org.springframework', name: 'spring-context', version: '5.2.8.RELEASE'
+}
+
+jar {
+    enabled = true
+}
+```
+
+d) All beans are stored in same spring context, this is achieved by using annotation that tells Spring to scan chosen packages:
+
+```java
+@SpringBootApplication(scanBasePackages = {"io.github.mateuszgrobelny.bmr",
+        "io.github.mateuszgrobelny.bmi",
+        "io.github.mateuszgrobelny.rest"})
+public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+This approach can be treated as an extension of the previous one. The Gradle subproject can represent a set of related packages that need to cooperate. Another advantage is that dependencies are not mixed between modules. This can make potential separation of module as microservice even easier. 
+
+### Modularization by Java 9 modules
+
+One of the problems that remain unaddressed is that sometimes utility classes that have to be shared between packages have to be `public`. Most of the time we want to avoid exposing them, as they belong to a given module, and should not be used anywhere else.
+Java 9 adds a tool that could help to restrict access to internal classes without the prevention of reusing them or need to have large packages.
+
+Unfortunately as far as I know this approach is not well supported by spring boot applications. It is possible to write modular applications with the use of Java 9 modules, but the process requires too much effort - at least for a regular business app. Libraries have to be much more strict in that matter. and I would advise you to get into this subject if you are writing code that will be reused by your peers as a library - it could save them many headaches.
+
+### Summary
+
+Modularization by package has the best ratio of effort/gain. It can be gradually adopted in projects. The transformation of layered structured applications requires some repackaging, but the final effect is worthwhile.
+
+Approaches with build tools and Java 9 modules are viable options, but their usage has to be analyzed carefully, as they need more effort. Also, the outcome of their usage is not as universal as package modules.

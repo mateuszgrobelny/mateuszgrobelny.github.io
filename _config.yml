@@ -13,7 +13,7 @@
 # you will see them accessed via {{ site.title }}, {{ site.email }}, and so on.
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
-title: Dev
+title: Software development
 email: mgrobelny@protonmail.com
 description: >- # this means to ignore newlines until "baseurl:"
   Software dev related blog
@@ -58,7 +58,7 @@ plugins:
 author:
   name   : "Mateusz Grobelny"
   avatar : "/assets/images/bio_photo.jpg"
-  bio    : "My awesome biography constrained to a sentence or two goes here."
+#  bio    : "My awesome biography constrained to a sentence or two goes here."
   links:
 #    - label: "Website"
 #      icon: "fas fa-fw fa-link"
